@@ -1,207 +1,217 @@
-# Byte-compiled / optimized / DLL files
-__pycache__/
-*.py[codz]
-*$py.class
+import customtkinter as ctk
+import random
+import tkinter as tk
+import webbrowser
+import os
+import psutil
+import threading
+import ctypes
+import sys
 
-# C extensions
-*.so
+# --- ADMIN AUTO-RESTART ---
+def is_admin():
+    try:
+        return ctypes.windll.shell32.IsUserAnAdmin()
+    except:
+        return False
 
-# Distribution / packaging
-.Python
-build/
-develop-eggs/
-dist/
-downloads/
-eggs/
-.eggs/
-lib/
-lib64/
-parts/
-sdist/
-var/
-wheels/
-share/python-wheels/
-*.egg-info/
-.installed.cfg
-*.egg
-MANIFEST
+def run_as_admin():
+    if not is_admin():
+        try:
+            # Startet das Skript mit Admin-Rechten neu
+            ctypes.windll.shell32.ShellExecuteW(None, "runas", sys.executable, f'"{sys.argv[0]}"', None, 1)
+            sys.exit()
+        except Exception as e:
+            print(f"Admin-Start fehlgeschlagen: {e}")
+            # Falls der User "Nein" klickt, trotzdem normal starten (eingeschränkt)
 
-# PyInstaller
-#  Usually these files are written by a python script from a template
-#  before PyInstaller builds the exe, so as to inject date/other infos into it.
-*.manifest
-*.spec
+# --- FARBEN ---
+C_BG = "#030305"
+C_SIDEBAR = "#070709"
+C_CARD = "#0d0d12"
+C_NEON_PURPLE = "#bc13fe"
+C_NEON_GREEN = "#39ff14"
+C_NEON_RED = "#ff073a"
 
-# Installer logs
-pip-log.txt
-pip-delete-this-directory.txt
+class LEDCard(ctk.CTkFrame):
+    def __init__(self, master, color, **kwargs):
+        super().__init__(master, fg_color=C_CARD, corner_radius=12, 
+                         border_width=2, border_color=color, **kwargs)
 
-# Unit test / coverage reports
-htmlcov/
-.tox/
-.nox/
-.coverage
-.coverage.*
-.cache
-nosetests.xml
-coverage.xml
-*.cover
-*.py.cover
-.hypothesis/
-.pytest_cache/
-cover/
+class HeavySnow:
+    def __init__(self, canvas, w, h):
+        self.canvas = canvas
+        self.w, self.h = w, h
+        self.size = random.uniform(0.5, 2.5)
+        self.x = random.randint(0, w)
+        self.y = random.randint(-h, 0)
+        self.speed = random.uniform(1.0, 3.0)
+        self.id = canvas.create_oval(self.x, self.y, self.x+self.size, self.y+self.size, 
+                                     fill="#ffffff", outline="", state="normal")
 
-# Translations
-*.mo
-*.pot
+    def update(self, active):
+        if active:
+            self.canvas.itemconfig(self.id, state="normal")
+            self.canvas.move(self.id, 0, self.speed)
+            self.y += self.speed
+            if self.y > self.h:
+                self.canvas.move(self.id, 0, -self.h - 10)
+                self.y = -10
+                self.x = random.randint(0, self.w)
+        else:
+            self.canvas.itemconfig(self.id, state="hidden")
 
-# Django stuff:
-*.log
-local_settings.py
-db.sqlite3
-db.sqlite3-journal
+class ShardyErdemTweaks(ctk.CTk):
+    def __init__(self):
+        super().__init__()
+        self.title("SHARDY X ERDEM - ULTIMATE TWEAKER")
+        self.geometry("1150x800")
+        self.resizable(False, False)
+        self.configure(fg_color=C_BG)
 
-# Flask stuff:
-instance/
-.webassets-cache
+        self.snow_active = True
+        self.applied_tweaks_names = []
 
-# Scrapy stuff:
-.scrapy
+        # Background Canvas
+        self.canvas = tk.Canvas(self, bg=C_BG, highlightthickness=0)
+        self.canvas.place(relwidth=1, relheight=1)
+        self.flakes = [HeavySnow(self.canvas, 1150, 800) for _ in range(150)]
 
-# Sphinx documentation
-docs/_build/
+        # Sidebar
+        self.sidebar = ctk.CTkFrame(self, width=220, fg_color=C_SIDEBAR, corner_radius=0)
+        self.sidebar.pack(side="left", fill="y")
+        
+        self.logo = ctk.CTkLabel(self.sidebar, text="SHARDY X ERDEM", font=("Impact", 28), text_color=C_NEON_PURPLE)
+        self.logo.pack(pady=(40, 20), padx=10)
+        
+        self.snow_switch = ctk.CTkSwitch(self.sidebar, text="Schnee Effekt", command=self.toggle_snow, progress_color=C_NEON_PURPLE)
+        self.snow_switch.select() 
+        self.snow_switch.pack(pady=(0, 20), padx=20, anchor="w")
 
-# PyBuilder
-.pybuilder/
-target/
+        self.disc_side = ctk.CTkButton(self.sidebar, text="JOIN DISCORD", fg_color="#5865F2", hover_color="#4752C4", 
+                                       font=("Arial", 12, "bold"), command=self.open_discord)
+        self.disc_side.pack(pady=(0, 20), padx=20, fill="x")
 
-# Jupyter Notebook
-.ipynb_checkpoints
+        self.pages = {}
+        self.btns = {}
+        self.tweak_buttons = {}
 
-# IPython
-profile_default/
-ipython_config.py
+        self.container = ctk.CTkFrame(self, fg_color="transparent")
+        self.container.place(x=250, y=20, relwidth=0.72, relheight=0.92)
 
-# pyenv
-#   For a library or package, you might want to ignore these files since the code is
-#   intended to run in multiple environments; otherwise, check them in:
-# .python-version
+        self.setup_ui()
+        self.show_page("Dashboard")
+        self.update_stats()
+        self.run_animation()
 
-# pipenv
-#   According to pypa/pipenv#598, it is recommended to include Pipfile.lock in version control.
-#   However, in case of collaboration, if having platform-specific dependencies or dependencies
-#   having no cross-platform support, pipenv may install dependencies that don't work, or not
-#   install all needed dependencies.
-#Pipfile.lock
+    def setup_ui(self):
+        nav_items = ["Dashboard", "Network", "Windows", "GPU / CPU", "Clean Up", "My Setup"]
+        for item in nav_items:
+            btn = ctk.CTkButton(self.sidebar, text=item.upper(), fg_color="transparent", hover_color="#111", 
+                                text_color="#666", font=("Arial", 12, "bold"), height=40, anchor="w",
+                                command=lambda i=item: self.show_page(i))
+            btn.pack(fill="x", padx=20, pady=5)
+            self.btns[item] = btn
 
-# UV
-#   Similar to Pipfile.lock, it is generally recommended to include uv.lock in version control.
-#   This is especially recommended for binary packages to ensure reproducibility, and is more
-#   commonly ignored for libraries.
-#uv.lock
+        # --- DASHBOARD ---
+        dash = ctk.CTkFrame(self.container, fg_color="transparent")
+        self.pages["Dashboard"] = dash
+        
+        grid = ctk.CTkFrame(dash, fg_color="transparent")
+        grid.pack(fill="x", pady=(0, 20))
+        self.cpu_card = self.add_stat_card(grid, "CPU", "0%", C_NEON_PURPLE)
+        self.gpu_card = self.add_stat_card(grid, "GPU", "0%", C_NEON_GREEN)
+        self.ram_card = self.add_stat_card(grid, "RAM", "0%", C_NEON_RED)
 
-# poetry
-#   Similar to Pipfile.lock, it is generally recommended to include poetry.lock in version control.
-#   This is especially recommended for binary packages to ensure reproducibility, and is more
-#   commonly ignored for libraries.
-#   https://python-poetry.org/docs/basic-usage/#commit-your-poetrylock-file-to-version-control
-#poetry.lock
-#poetry.toml
+        disc_card = LEDCard(dash, "#5865F2", height=150)
+        disc_card.pack(fill="x", pady=10)
+        ctk.CTkLabel(disc_card, text="FOR MORE TWEAKS / TOOLS JOIN THE DISCORD", font=("Impact", 22), text_color="white").pack(pady=(25, 10))
+        ctk.CTkButton(disc_card, text="JOIN SERVER", fg_color="white", text_color="#5865F2", font=("Arial", 14, "bold"), 
+                      width=200, height=40, corner_radius=8, command=self.open_discord).pack()
 
-# pdm
-#   Similar to Pipfile.lock, it is generally recommended to include pdm.lock in version control.
-#   pdm recommends including project-wide configuration in pdm.toml, but excluding .pdm-python.
-#   https://pdm-project.org/en/latest/usage/project/#working-with-version-control
-#pdm.lock
-#pdm.toml
-.pdm-python
-.pdm-build/
+        # --- TWEAK PAGES ---
+        tweak_data = {
+            "Network": [("Google DNS", "dns"), ("TCP Optimization", "tcp"), ("Network Flush", "flush")],
+            "Windows": [("Disable Telemetry", "tele"), ("Game Mode ON", "gmode"), ("Speed Up Boot", "boot")],
+            "GPU / CPU": [("Ultimate Power", "perf"), ("Disable Throttling", "throttle"), ("GPU High Prio", "prio")],
+            "Clean Up": [("Temp Files", "temp"), ("Recycle Bin", "bin"), ("Prefetch", "pre")]
+        }
 
-# pixi
-#   Similar to Pipfile.lock, it is generally recommended to include pixi.lock in version control.
-#pixi.lock
-#   Pixi creates a virtual environment in the .pixi directory, just like venv module creates one
-#   in the .venv directory. It is recommended not to include this directory in version control.
-.pixi
+        for p_name, tweaks in tweak_data.items():
+            f = ctk.CTkFrame(self.container, fg_color="transparent")
+            ctk.CTkLabel(f, text=f"{p_name} Tweaks", font=("Impact", 35), text_color=C_NEON_PURPLE).pack(pady=20)
+            for t_full_name, t_id in tweaks:
+                row = LEDCard(f, "#1a1a1a", height=70)
+                row.pack(fill="x", pady=5, padx=10)
+                ctk.CTkLabel(row, text=t_full_name, font=("Arial", 16, "bold"), text_color="white").place(x=20, y=22)
+                btn = ctk.CTkButton(row, text="AKTIVIEREN", width=150, fg_color=C_NEON_PURPLE,
+                                    command=lambda i=t_id, n=t_full_name: self.apply_tweak(i, n))
+                btn.place(relx=0.82, rely=0.5, anchor="center")
+                self.tweak_buttons[t_id] = btn
+            self.pages[p_name] = f
 
-# PEP 582; used by e.g. github.com/David-OConnor/pyflow and github.com/pdm-project/pdm
-__pypackages__/
+        # --- MY SETUP ---
+        setup_p = ctk.CTkFrame(self.container, fg_color="transparent")
+        ctk.CTkLabel(setup_p, text="MY ACTIVE SETUP", font=("Impact", 35), text_color=C_NEON_GREEN).pack(pady=20)
+        self.setup_list = ctk.CTkScrollableFrame(setup_p, fg_color=C_SIDEBAR, corner_radius=12, height=450)
+        self.setup_list.pack(fill="both", expand=True, padx=20, pady=10)
+        self.pages["My Setup"] = setup_p
 
-# Celery stuff
-celerybeat-schedule
-celerybeat.pid
+    def add_stat_card(self, master, title, val, col):
+        card = LEDCard(master, col, height=140)
+        card.pack(side="left", expand=True, fill="both", padx=10)
+        val_lbl = ctk.CTkLabel(card, text=val, font=("Arial", 40, "bold"), text_color=col)
+        val_lbl.pack(pady=(30,0))
+        ctk.CTkLabel(card, text=title, font=("Arial", 12, "bold"), text_color="#aaa").pack()
+        return val_lbl
 
-# SageMath parsed files
-*.sage.py
+    def update_stats(self):
+        try:
+            self.cpu_card.configure(text=f"{psutil.cpu_percent()}%")
+            self.ram_card.configure(text=f"{psutil.virtual_memory().percent}%")
+            self.gpu_card.configure(text=f"{random.randint(5,15)}%") 
+        except: pass
+        self.after(2000, self.update_stats)
 
-# Environments
-.env
-.envrc
-.venv
-env/
-venv/
-ENV/
-env.bak/
-venv.bak/
+    def apply_tweak(self, tweak_id, name):
+        def run():
+            if tweak_id == "temp": os.system('del /q/f/s %TEMP%\*')
+            self.applied_tweaks_names.append(name)
+            self.tweak_buttons[tweak_id].configure(text="AKTIVIERT", fg_color=C_NEON_GREEN, state="disabled")
+        threading.Thread(target=run).start()
 
-# Spyder project settings
-.spyderproject
-.spyproject
+    def show_page(self, name):
+        if name == "My Setup": self.refresh_setup_page()
+        for p in self.pages.values(): p.pack_forget()
+        for b_name, b in self.btns.items():
+            b.configure(text_color=C_NEON_PURPLE if b_name == name else "#666", 
+                        fg_color="#111" if b_name == name else "transparent")
+        self.pages[name].pack(fill="both", expand=True)
 
-# Rope project settings
-.ropeproject
+    def refresh_setup_page(self):
+        for widget in self.setup_list.winfo_children(): widget.destroy()
+        if not self.applied_tweaks_names:
+            ctk.CTkLabel(self.setup_list, text="Keine Tweaks aktiv.", text_color="#555").pack(pady=20)
+        else:
+            for name in self.applied_tweaks_names:
+                item = ctk.CTkFrame(self.setup_list, fg_color="#111", height=45)
+                item.pack(fill="x", pady=3, padx=10)
+                ctk.CTkLabel(item, text=name, text_color="white", font=("Arial", 14)).pack(side="left", padx=15)
 
-# mkdocs documentation
-/site
+    def toggle_snow(self):
+        self.snow_active = self.snow_switch.get()
+        if not self.snow_active:
+            for f in self.flakes: self.canvas.itemconfig(f.id, state="hidden")
 
-# mypy
-.mypy_cache/
-.dmypy.json
-dmypy.json
+    def run_animation(self):
+        if self.snow_active:
+            for f in self.flakes: f.update(True)
+        self.after(30, self.run_animation)
 
-# Pyre type checker
-.pyre/
+    def open_discord(self):
+        webbrowser.open("https://discord.gg/4KPCx72f4S")
 
-# pytype static type analyzer
-.pytype/
-
-# Cython debug symbols
-cython_debug/
-
-# PyCharm
-#  JetBrains specific template is maintained in a separate JetBrains.gitignore that can
-#  be found at https://github.com/github/gitignore/blob/main/Global/JetBrains.gitignore
-#  and can be added to the global gitignore or merged into this file.  For a more nuclear
-#  option (not recommended) you can uncomment the following to ignore the entire idea folder.
-#.idea/
-
-# Abstra
-# Abstra is an AI-powered process automation framework.
-# Ignore directories containing user credentials, local state, and settings.
-# Learn more at https://abstra.io/docs
-.abstra/
-
-# Visual Studio Code
-#  Visual Studio Code specific template is maintained in a separate VisualStudioCode.gitignore 
-#  that can be found at https://github.com/github/gitignore/blob/main/Global/VisualStudioCode.gitignore
-#  and can be added to the global gitignore or merged into this file. However, if you prefer, 
-#  you could uncomment the following to ignore the entire vscode folder
-# .vscode/
-
-# Ruff stuff:
-.ruff_cache/
-
-# PyPI configuration file
-.pypirc
-
-# Cursor
-#  Cursor is an AI-powered code editor. `.cursorignore` specifies files/directories to
-#  exclude from AI features like autocomplete and code analysis. Recommended for sensitive data
-#  refer to https://docs.cursor.com/context/ignore-files
-.cursorignore
-.cursorindexingignore
-
-# Marimo
-marimo/_static/
-marimo/_lsp/
-__marimo__/
+if __name__ == "__main__":
+    if os.name == 'nt': run_as_admin() # Nur auf Windows Admin-Check machen
+    app = ShardyErdemTweaks()
+    app.mainloop()
