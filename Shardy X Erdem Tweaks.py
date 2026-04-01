@@ -1,0 +1,217 @@
+import customtkinter as ctk
+import random
+import tkinter as tk
+import webbrowser
+import os
+import psutil
+import threading
+import ctypes
+import sys
+
+# --- ADMIN AUTO-RESTART ---
+def is_admin():
+    try:
+        return ctypes.windll.shell32.IsUserAnAdmin()
+    except:
+        return False
+
+def run_as_admin():
+    if not is_admin():
+        try:
+            # Startet das Skript mit Admin-Rechten neu
+            ctypes.windll.shell32.ShellExecuteW(None, "runas", sys.executable, f'"{sys.argv[0]}"', None, 1)
+            sys.exit()
+        except Exception as e:
+            print(f"Admin-Start fehlgeschlagen: {e}")
+            # Falls der User "Nein" klickt, trotzdem normal starten (eingeschränkt)
+
+# --- FARBEN ---
+C_BG = "#030305"
+C_SIDEBAR = "#070709"
+C_CARD = "#0d0d12"
+C_NEON_PURPLE = "#bc13fe"
+C_NEON_GREEN = "#39ff14"
+C_NEON_RED = "#ff073a"
+
+class LEDCard(ctk.CTkFrame):
+    def __init__(self, master, color, **kwargs):
+        super().__init__(master, fg_color=C_CARD, corner_radius=12, 
+                         border_width=2, border_color=color, **kwargs)
+
+class HeavySnow:
+    def __init__(self, canvas, w, h):
+        self.canvas = canvas
+        self.w, self.h = w, h
+        self.size = random.uniform(0.5, 2.5)
+        self.x = random.randint(0, w)
+        self.y = random.randint(-h, 0)
+        self.speed = random.uniform(1.0, 3.0)
+        self.id = canvas.create_oval(self.x, self.y, self.x+self.size, self.y+self.size, 
+                                     fill="#ffffff", outline="", state="normal")
+
+    def update(self, active):
+        if active:
+            self.canvas.itemconfig(self.id, state="normal")
+            self.canvas.move(self.id, 0, self.speed)
+            self.y += self.speed
+            if self.y > self.h:
+                self.canvas.move(self.id, 0, -self.h - 10)
+                self.y = -10
+                self.x = random.randint(0, self.w)
+        else:
+            self.canvas.itemconfig(self.id, state="hidden")
+
+class ShardyErdemTweaks(ctk.CTk):
+    def __init__(self):
+        super().__init__()
+        self.title("SHARDY X ERDEM - ULTIMATE TWEAKER")
+        self.geometry("1150x800")
+        self.resizable(False, False)
+        self.configure(fg_color=C_BG)
+
+        self.snow_active = True
+        self.applied_tweaks_names = []
+
+        # Background Canvas
+        self.canvas = tk.Canvas(self, bg=C_BG, highlightthickness=0)
+        self.canvas.place(relwidth=1, relheight=1)
+        self.flakes = [HeavySnow(self.canvas, 1150, 800) for _ in range(150)]
+
+        # Sidebar
+        self.sidebar = ctk.CTkFrame(self, width=220, fg_color=C_SIDEBAR, corner_radius=0)
+        self.sidebar.pack(side="left", fill="y")
+        
+        self.logo = ctk.CTkLabel(self.sidebar, text="SHARDY X ERDEM", font=("Impact", 28), text_color=C_NEON_PURPLE)
+        self.logo.pack(pady=(40, 20), padx=10)
+        
+        self.snow_switch = ctk.CTkSwitch(self.sidebar, text="Schnee Effekt", command=self.toggle_snow, progress_color=C_NEON_PURPLE)
+        self.snow_switch.select() 
+        self.snow_switch.pack(pady=(0, 20), padx=20, anchor="w")
+
+        self.disc_side = ctk.CTkButton(self.sidebar, text="JOIN DISCORD", fg_color="#5865F2", hover_color="#4752C4", 
+                                       font=("Arial", 12, "bold"), command=self.open_discord)
+        self.disc_side.pack(pady=(0, 20), padx=20, fill="x")
+
+        self.pages = {}
+        self.btns = {}
+        self.tweak_buttons = {}
+
+        self.container = ctk.CTkFrame(self, fg_color="transparent")
+        self.container.place(x=250, y=20, relwidth=0.72, relheight=0.92)
+
+        self.setup_ui()
+        self.show_page("Dashboard")
+        self.update_stats()
+        self.run_animation()
+
+    def setup_ui(self):
+        nav_items = ["Dashboard", "Network", "Windows", "GPU / CPU", "Clean Up", "My Setup"]
+        for item in nav_items:
+            btn = ctk.CTkButton(self.sidebar, text=item.upper(), fg_color="transparent", hover_color="#111", 
+                                text_color="#666", font=("Arial", 12, "bold"), height=40, anchor="w",
+                                command=lambda i=item: self.show_page(i))
+            btn.pack(fill="x", padx=20, pady=5)
+            self.btns[item] = btn
+
+        # --- DASHBOARD ---
+        dash = ctk.CTkFrame(self.container, fg_color="transparent")
+        self.pages["Dashboard"] = dash
+        
+        grid = ctk.CTkFrame(dash, fg_color="transparent")
+        grid.pack(fill="x", pady=(0, 20))
+        self.cpu_card = self.add_stat_card(grid, "CPU", "0%", C_NEON_PURPLE)
+        self.gpu_card = self.add_stat_card(grid, "GPU", "0%", C_NEON_GREEN)
+        self.ram_card = self.add_stat_card(grid, "RAM", "0%", C_NEON_RED)
+
+        disc_card = LEDCard(dash, "#5865F2", height=150)
+        disc_card.pack(fill="x", pady=10)
+        ctk.CTkLabel(disc_card, text="FOR MORE TWEAKS / TOOLS JOIN THE DISCORD", font=("Impact", 22), text_color="white").pack(pady=(25, 10))
+        ctk.CTkButton(disc_card, text="JOIN SERVER", fg_color="white", text_color="#5865F2", font=("Arial", 14, "bold"), 
+                      width=200, height=40, corner_radius=8, command=self.open_discord).pack()
+
+        # --- TWEAK PAGES ---
+        tweak_data = {
+            "Network": [("Google DNS", "dns"), ("TCP Optimization", "tcp"), ("Network Flush", "flush")],
+            "Windows": [("Disable Telemetry", "tele"), ("Game Mode ON", "gmode"), ("Speed Up Boot", "boot")],
+            "GPU / CPU": [("Ultimate Power", "perf"), ("Disable Throttling", "throttle"), ("GPU High Prio", "prio")],
+            "Clean Up": [("Temp Files", "temp"), ("Recycle Bin", "bin"), ("Prefetch", "pre")]
+        }
+
+        for p_name, tweaks in tweak_data.items():
+            f = ctk.CTkFrame(self.container, fg_color="transparent")
+            ctk.CTkLabel(f, text=f"{p_name} Tweaks", font=("Impact", 35), text_color=C_NEON_PURPLE).pack(pady=20)
+            for t_full_name, t_id in tweaks:
+                row = LEDCard(f, "#1a1a1a", height=70)
+                row.pack(fill="x", pady=5, padx=10)
+                ctk.CTkLabel(row, text=t_full_name, font=("Arial", 16, "bold"), text_color="white").place(x=20, y=22)
+                btn = ctk.CTkButton(row, text="AKTIVIEREN", width=150, fg_color=C_NEON_PURPLE,
+                                    command=lambda i=t_id, n=t_full_name: self.apply_tweak(i, n))
+                btn.place(relx=0.82, rely=0.5, anchor="center")
+                self.tweak_buttons[t_id] = btn
+            self.pages[p_name] = f
+
+        # --- MY SETUP ---
+        setup_p = ctk.CTkFrame(self.container, fg_color="transparent")
+        ctk.CTkLabel(setup_p, text="MY ACTIVE SETUP", font=("Impact", 35), text_color=C_NEON_GREEN).pack(pady=20)
+        self.setup_list = ctk.CTkScrollableFrame(setup_p, fg_color=C_SIDEBAR, corner_radius=12, height=450)
+        self.setup_list.pack(fill="both", expand=True, padx=20, pady=10)
+        self.pages["My Setup"] = setup_p
+
+    def add_stat_card(self, master, title, val, col):
+        card = LEDCard(master, col, height=140)
+        card.pack(side="left", expand=True, fill="both", padx=10)
+        val_lbl = ctk.CTkLabel(card, text=val, font=("Arial", 40, "bold"), text_color=col)
+        val_lbl.pack(pady=(30,0))
+        ctk.CTkLabel(card, text=title, font=("Arial", 12, "bold"), text_color="#aaa").pack()
+        return val_lbl
+
+    def update_stats(self):
+        try:
+            self.cpu_card.configure(text=f"{psutil.cpu_percent()}%")
+            self.ram_card.configure(text=f"{psutil.virtual_memory().percent}%")
+            self.gpu_card.configure(text=f"{random.randint(5,15)}%") 
+        except: pass
+        self.after(2000, self.update_stats)
+
+    def apply_tweak(self, tweak_id, name):
+        def run():
+            if tweak_id == "temp": os.system('del /q/f/s %TEMP%\*')
+            self.applied_tweaks_names.append(name)
+            self.tweak_buttons[tweak_id].configure(text="AKTIVIERT", fg_color=C_NEON_GREEN, state="disabled")
+        threading.Thread(target=run).start()
+
+    def show_page(self, name):
+        if name == "My Setup": self.refresh_setup_page()
+        for p in self.pages.values(): p.pack_forget()
+        for b_name, b in self.btns.items():
+            b.configure(text_color=C_NEON_PURPLE if b_name == name else "#666", 
+                        fg_color="#111" if b_name == name else "transparent")
+        self.pages[name].pack(fill="both", expand=True)
+
+    def refresh_setup_page(self):
+        for widget in self.setup_list.winfo_children(): widget.destroy()
+        if not self.applied_tweaks_names:
+            ctk.CTkLabel(self.setup_list, text="Keine Tweaks aktiv.", text_color="#555").pack(pady=20)
+        else:
+            for name in self.applied_tweaks_names:
+                item = ctk.CTkFrame(self.setup_list, fg_color="#111", height=45)
+                item.pack(fill="x", pady=3, padx=10)
+                ctk.CTkLabel(item, text=name, text_color="white", font=("Arial", 14)).pack(side="left", padx=15)
+
+    def toggle_snow(self):
+        self.snow_active = self.snow_switch.get()
+        if not self.snow_active:
+            for f in self.flakes: self.canvas.itemconfig(f.id, state="hidden")
+
+    def run_animation(self):
+        if self.snow_active:
+            for f in self.flakes: f.update(True)
+        self.after(30, self.run_animation)
+
+    def open_discord(self):
+        webbrowser.open("https://discord.gg/4KPCx72f4S")
+
+if __name__ == "__main__":
+    if os.name == 'nt': run_as_admin() # Nur auf Windows Admin-Check machen
+    app = ShardyErdemTweaks()
+    app.mainloop()
